@@ -3,9 +3,28 @@ from flask import Flask, request, jsonify
 import pickle
 from nltk import PorterStemmer
 from keras import models
+from csv import reader
+
+
+def csv_to_array(file_path):
+    array_2d = []
+    with open(file_path, 'r') as csv_file:
+        csv_reader = reader(csv_file)
+        for row in csv_reader:
+            array_2d.append(row)
+    return array_2d
 
 
 app = Flask(__name__)
+
+file_path = 'symptom_precaution.csv' 
+result = csv_to_array(file_path)
+result = result[1:]
+DiseaseToPrecutions = {}
+
+for lst in result:
+  DiseaseToPrecutions[lst[0]] = ", ".join(lst[1:])
+
 
 
 model = models.load_model('NLP_model.h5')
@@ -22,7 +41,7 @@ ps = PorterStemmer()
 def normalize(text):
     if text == text:
         text = text.lower()
-        text = text.replace('_', ' ')
+        text = text.replace('_', ' ').replace(",", " ")
         text = ' '.join([ps.stem(word) for word in text.split()])
     else:
         text = ''
@@ -43,16 +62,17 @@ def predict():
     text = normalize(text)
     text = vectorizer.transform([text])
     prediction = model.predict(text.toarray())
-    lst =  [(prob, idx)  for (idx, prob) in enumerate(prediction[0])]
-    import heapq as hq
-    hq.heapify(lst)
-    top_three = hq.nlargest(3, lst)
-    idxes = []
-    idxes = [idx for (val, idx) in top_three ]    
-    prediction = le.inverse_transform(idxes)
+    DiseaseIdx = prediction.argmax()   
+    prediction = le.inverse_transform([DiseaseIdx])
+    precutions = DiseaseToPrecutions[prediction[0]]
+    
+    data = {
+    'Disease': prediction[0],
+    'precautions': precutions
+    }
 
     try:
-        result = jsonify(", ".join(prediction))
+        result = jsonify(data)
     except TypeError as e:
         result = jsonify({'Error', str(e)})   
 
@@ -60,4 +80,4 @@ def predict():
 
 
 if __name__ == '__main__':
-    app.run(debug=True)
+    app.run(port=8000, debug=True)
